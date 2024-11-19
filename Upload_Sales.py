@@ -41,6 +41,25 @@ def load_data(file=None):
         st.error(f"Error loading file: {e}")
         return None
 
+# Function to automatically detect columns
+def auto_detect_columns(data):
+    date_column = None
+    sales_column = None
+
+    # Detect date column
+    for col in data.columns:
+        if "date" in col.lower() or "time" in col.lower():
+            date_column = col
+            break
+
+    # Detect sales column
+    for col in data.columns:
+        if "sale" in col.lower() or "amount" in col.lower() or "revenue" in col.lower() or "total" in col.lower():
+            sales_column = col
+            break
+
+    return date_column, sales_column
+
 # File uploader
 st.sidebar.header("Upload Your Data")
 uploaded_file = st.sidebar.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
@@ -51,18 +70,13 @@ if data is not None:
     st.write("### Dataset Preview")
     st.dataframe(data.head())
 
-    # Automatic column detection
-    date_columns = data.select_dtypes(include=['datetime', 'object']).columns
-    numerical_columns = data.select_dtypes(include=['number']).columns
-    categorical_columns = data.select_dtypes(include=['object']).columns
+    # Automatically detect columns
+    date_column, sales_column = auto_detect_columns(data)
 
-    # Infer column roles
-    date_column = date_columns[0] if len(date_columns) > 0 else None
-    numerical_column = numerical_columns[0] if len(numerical_columns) > 0 else None
-    category_column = categorical_columns[0] if len(categorical_columns) > 0 else None
-
-    # Handle date column issues
-    if date_column:
+    if not date_column or not sales_column:
+        st.error("Could not automatically detect the required columns (Date and Sales). Please check your dataset.")
+    else:
+        # Ensure the date column is in datetime format
         try:
             data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
             if data[date_column].isna().all():
@@ -72,125 +86,53 @@ if data is not None:
             st.warning(f"Error parsing date column '{date_column}': {e}. Time-based analysis will be skipped.")
             date_column = None
 
-    if not numerical_column or not category_column:
-        st.error("The uploaded file does not have the required structure for automatic analysis.")
-    else:
-        # Metrics
-        st.title("Automated Sales Dashboard")
-        st.markdown("Insights generated from the uploaded dataset.")
-
-        total_value = data[numerical_column].sum()
-        unique_categories = data[category_column].nunique()
-        total_records = len(data)
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Value", f"${total_value:,.2f}")
-        col2.metric("Unique Categories", unique_categories)
-        col3.metric("Total Records", total_records)
-
-        # Time Series Analysis
         if date_column:
-            st.header("Trend Over Time")
-            time_series = data.groupby(data[date_column].dt.to_period("M"))[numerical_column].sum().reset_index()
+            st.title("Automated Sales Dashboard")
+            st.markdown("Insights generated from the uploaded dataset.")
+
+            total_sales = data[sales_column].sum()
+            total_records = len(data)
+
+            col1, col2 = st.columns(2)
+            col1.metric("Total Sales", f"${total_sales:,.2f}")
+            col2.metric("Total Records", total_records)
+
+            # Time Series Analysis
+            st.header("Monthly Sales Trend")
+            time_series = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
             time_series[date_column] = time_series[date_column].dt.to_timestamp()
             fig_trend = px.line(
-                time_series, x=date_column, y=numerical_column, title="Monthly Trend"
+                time_series, x=date_column, y=sales_column, title="Monthly Sales Trend"
             )
             st.plotly_chart(fig_trend, use_container_width=True)
-        else:
-            st.warning("Time-based analysis was skipped due to invalid or missing date information.")
 
-        # Category Analysis
-        st.header("Category Breakdown")
-        category_data = data.groupby(category_column)[numerical_column].sum().reset_index()
-        fig_category = px.bar(
-            category_data,
-            x=category_column,
-            y=numerical_column,
-            title="Category-wise Analysis",
-            text=numerical_column,
-        )
-        st.plotly_chart(fig_category, use_container_width=True)
+            # Distribution of Sales Data
+            st.header("Distribution of Sales")
+            fig_distribution = px.histogram(
+                data, x=sales_column, nbins=20, title=f"Distribution of {sales_column}"
+            )
+            st.plotly_chart(fig_distribution, use_container_width=True)
 
-        # Distribution of Numerical Data
-        st.header("Distribution of Values")
-        fig_distribution = px.histogram(
-            data, x=numerical_column, nbins=20, title=f"Distribution of {numerical_column}"
-        )
-        st.plotly_chart(fig_distribution, use_container_width=True)
-
-        # Profile Report Section
-        st.header("Data Profiling Report")
-        st.markdown(
-            "Below is the profiling report generated by **ydata-profiling**, available for download."
-        )
-
-        # Generate and save the profile report
-        profile = ProfileReport(data, title="Pandas Profiling Report", explorative=True)
-        profile_path = "profiling_report.html"
-        profile.to_file(profile_path)
-
-        # Provide the report for download
-        with open(profile_path, "rb") as file:
-            btn = st.download_button(
-                label="Download Profiling Report",
-                data=file,
-                file_name="profiling_report.html",
-                mime="text/html"
+            # Profile Report Section
+            st.header("Data Profiling Report")
+            st.markdown(
+                "Below is the profiling report generated by **ydata-profiling**, available for download."
             )
 
-        # Footer
-        st.success("Analysis completed automatically!")
+            # Generate and save the profile report
+            profile = ProfileReport(data, title="Pandas Profiling Report", explorative=True)
+            profile_path = "profiling_report.html"
+            profile.to_file(profile_path)
 
-        # Custom Visualizations Section
-        st.header("Custom Visualizations")
+            # Provide the report for download
+            with open(profile_path, "rb") as file:
+                btn = st.download_button(
+                    label="Download Profiling Report",
+                    data=file,
+                    file_name="profiling_report.html",
+                    mime="text/html"
+                )
 
-        # Correlation Heatmap
-        if len(numerical_columns) > 1:
-            st.subheader("Correlation Heatmap")
-            correlation_matrix = data[numerical_columns].corr()
-            fig_corr = create_annotated_heatmap(
-                z=correlation_matrix.values,
-                x=correlation_matrix.columns.tolist(),
-                y=correlation_matrix.columns.tolist(),
-                colorscale="Viridis"
-            )
-            st.plotly_chart(fig_corr, use_container_width=True)
-
-        # Boxplot for Outliers
-        st.subheader("Boxplot for Outliers")
-        selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns)
-        fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
-        st.plotly_chart(fig_boxplot, use_container_width=True)
-
-        # Pie Chart for Category Distribution
-        st.subheader("Category Distribution")
-        selected_category_col = st.selectbox("Select a categorical column for pie chart:", categorical_columns)
-        category_counts = data[selected_category_col].value_counts().reset_index()
-        category_counts.columns = ['Category', 'Count']
-        fig_pie = px.pie(
-            category_counts,
-            names='Category',
-            values='Count',
-            title=f"Distribution of {selected_category_col}",
-            hole=0.4
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-        # Scatter Plot for Relationships
-        st.subheader("Scatter Plot for Relationships")
-        if len(numerical_columns) > 1:
-            x_axis = st.selectbox("Select X-axis:", numerical_columns)
-            y_axis = st.selectbox("Select Y-axis:", numerical_columns)
-            fig_scatter = px.scatter(
-                data,
-                x=x_axis,
-                y=y_axis,
-                color=category_column,
-                title=f"Scatter Plot of {x_axis} vs {y_axis}"
-            )
-            st.plotly_chart(fig_scatter, use_container_width=True)
-        else:
-            st.warning("Not enough numerical columns for scatter plot.")
+            st.success("Analysis completed automatically!")
 else:
     st.warning("Please upload a dataset to proceed.")
