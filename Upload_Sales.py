@@ -86,6 +86,19 @@ if data is not None:
             st.warning(f"Error parsing date column '{date_column}': {e}. Time-based analysis will be skipped.")
             date_column = None
 
+        # Ensure the sales column is numeric
+        try:
+            data[sales_column] = pd.to_numeric(data[sales_column], errors='coerce')
+            if data[sales_column].isna().all():
+                st.error(f"The sales column '{sales_column}' contains no valid numeric data. Please check your dataset.")
+                st.stop()
+            else:
+                # Fill NaN values with 0 (optional, depending on the dataset)
+                data[sales_column] = data[sales_column].fillna(0)
+        except Exception as e:
+            st.error(f"Error converting sales column '{sales_column}' to numeric: {e}")
+            st.stop()
+
         if date_column:
             st.title("Automated Sales Dashboard")
             st.markdown("Insights generated from the uploaded dataset.")
@@ -136,3 +149,4 @@ if data is not None:
             st.success("Analysis completed automatically!")
 else:
     st.warning("Please upload a dataset to proceed.")
+
