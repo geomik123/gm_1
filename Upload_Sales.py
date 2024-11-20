@@ -49,7 +49,7 @@ if data is not None:
 
     # Specify the required columns explicitly
     date_column = "invoice_date"  # Replace with the exact name of the date column in your dataset
-    sales_column = "Sales Amount"  # Replace with the exact name of the sales column if needed
+    sales_column = "price"  # Replace with the exact name of the sales column if needed
 
     # Check if the specified columns exist in the dataset
     if date_column not in data.columns:
