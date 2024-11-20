@@ -30,6 +30,7 @@ def load_data(file=None):
                 st.error("Unsupported file format! Please upload a CSV or Excel file.")
                 return None
         else:
+            # Default dataset
             file_path = "customer_shopping_data.csv"
             data = pd.read_csv(file_path)
         return data
@@ -47,15 +48,24 @@ if data is not None:
     st.write("### Dataset Preview")
     st.dataframe(data.head())
 
-    # Specify the required columns explicitly
-    date_column = "invoice_date"  # Replace with the exact name of the date column in your dataset
-    sales_column = "price"  # Replace with the exact name of the sales column if needed
+    # Handle default file or uploaded file separately
+    if not uploaded_file:
+        # Default file logic: Assume specific column names
+        date_column = "invoice_date"
+        sales_column = "price"
+    else:
+        # Uploaded file: Attempt to detect date and sales columns
+        date_column = None
+        sales_column = None
 
-    # Check if the specified columns exist in the dataset
-    if date_column not in data.columns:
-        st.error(f"The required column '{date_column}' is not found in the dataset.")
-    elif sales_column not in data.columns:
-        st.error(f"The required column '{sales_column}' is not found in the dataset.")
+        for col in data.columns:
+            if "date" in col.lower() or "time" in col.lower():
+                date_column = col
+            if "sale" in col.lower() or "amount" in col.lower() or "price" in col.lower() or "total" in col.lower():
+                sales_column = col
+
+    if not date_column or not sales_column:
+        st.error("Could not automatically detect the required columns (Date and Sales). Please check your dataset.")
     else:
         try:
             # Convert the date column to datetime
@@ -139,4 +149,5 @@ if data is not None:
             st.error(f"Error processing columns: {e}")
 else:
     st.warning("Please upload a dataset to proceed.")
+
 
