@@ -5,8 +5,6 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-from plotly.figure_factory import create_annotated_heatmap
-from ydata_profiling import ProfileReport
 import csv
 from datetime import timedelta
 
@@ -80,51 +78,33 @@ if data is not None:
         col2.metric("Total Records", total_records)
         col3.metric("Average Sales", f"${(total_sales / total_records):,.2f}")
 
-        # Create charts
-        st.header("Visualizations")
-
         # Row 1: Monthly Trend
-        with st.container():
-            st.subheader("Monthly Sales Trend")
-            monthly_sales = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
-            monthly_sales[date_column] = monthly_sales[date_column].dt.to_timestamp()
-            fig_trend = px.line(monthly_sales, x=date_column, y=sales_column, title="Monthly Sales Trend")
-            st.plotly_chart(fig_trend, use_container_width=True)
+        st.header("Monthly Sales Trend")
+        monthly_sales = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
+        monthly_sales[date_column] = monthly_sales[date_column].dt.to_timestamp()
+        fig_trend = px.line(monthly_sales, x=date_column, y=sales_column, title="Monthly Sales Trend")
+        st.plotly_chart(fig_trend, use_container_width=True)
 
-        # Row 2: Correlation, Boxplot, and Pie Chart
-        st.subheader("Custom Visualizations")
+        # Row 2: Box Plot and Donut Chart
+        st.header("Visualizations")
         numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
         categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
 
-        col1, col2, col3 = st.columns(3)
-
-        # Correlation Heatmap
-        if len(numerical_columns) > 1:
-            with col1:
-                st.write("Correlation Heatmap")
-                correlation_matrix = data[numerical_columns].corr()
-                fig_corr = px.imshow(
-                    correlation_matrix,
-                    labels=dict(x="Features", y="Features", color="Correlation"),
-                    x=correlation_matrix.columns,
-                    y=correlation_matrix.columns,
-                    color_continuous_scale="Viridis",
-                )
-                st.plotly_chart(fig_corr, use_container_width=True)
+        col1, col2 = st.columns(2)
 
         # Boxplot for Outliers
-        if numerical_columns:
-            with col2:
-                st.write("Boxplot for Outliers")
+        with col1:
+            st.subheader("Boxplot for Outliers")
+            if numerical_columns:
                 selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns, key="boxplot")
                 fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
                 st.plotly_chart(fig_boxplot, use_container_width=True)
 
-        # Pie Chart for Category Distribution
-        if categorical_columns:
-            with col3:
-                st.write("Category Distribution")
-                selected_category_col = st.selectbox("Select a categorical column for pie chart:", categorical_columns, key="piechart")
+        # Donut Chart for Category Distribution
+        with col2:
+            st.subheader("Category Distribution")
+            if categorical_columns:
+                selected_category_col = st.selectbox("Select a categorical column for donut chart:", categorical_columns, key="donutchart")
                 category_counts = data[selected_category_col].value_counts().reset_index()
                 category_counts.columns = ['Category', 'Count']
                 fig_pie = px.pie(
@@ -136,17 +116,46 @@ if data is not None:
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
 
+        # Row 3: Correlation Table
+        st.header("Correlation Table")
+        if len(numerical_columns) > 1:
+            st.subheader("Correlation Heatmap")
+            correlation_matrix = data[numerical_columns].corr()
+            fig_corr = px.imshow(
+                correlation_matrix,
+                labels=dict(x="Features", y="Features", color="Correlation"),
+                x=correlation_matrix.columns,
+                y=correlation_matrix.columns,
+                color_continuous_scale="Viridis",
+                title="Correlation Heatmap",
+            )
+            st.plotly_chart(fig_corr, use_container_width=True)
+
         # Regression Analysis and Prediction
         st.header("Regression Analysis and Sales Prediction")
 
         # Prepare data for regression
         try:
+            data['Day'] = data[date_column]
             data['Month'] = data[date_column].dt.to_period("M").dt.to_timestamp()
-            monthly_sales = data.groupby('Month')[sales_column].sum().reset_index()
+            data['Quarter'] = data[date_column].dt.to_period("Q").dt.to_timestamp()
+            data['Year'] = data[date_column].dt.to_period("Y").dt.to_timestamp()
+
+            # Group data for different filters
+            filters = {
+                "Day": data.groupby('Day')[sales_column].sum().reset_index(),
+                "Month": data.groupby('Month')[sales_column].sum().reset_index(),
+                "Quarter": data.groupby('Quarter')[sales_column].sum().reset_index(),
+                "Year": data.groupby('Year')[sales_column].sum().reset_index()
+            }
+
+            # User selects the filter
+            time_filter = st.radio("Select Time Filter:", options=["Day", "Month", "Quarter", "Year"])
+            filtered_data = filters[time_filter]
 
             # Linear Regression Model
-            X = np.arange(len(monthly_sales)).reshape(-1, 1)  # Time index
-            y = monthly_sales[sales_column].values
+            X = np.arange(len(filtered_data)).reshape(-1, 1)  # Time index
+            y = filtered_data[sales_column].values
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
             model = LinearRegression()
@@ -156,28 +165,37 @@ if data is not None:
             y_pred = model.predict(X_test)
             mse = mean_squared_error(y_test, y_pred)
 
-            # Display results
-            st.subheader("Regression Results")
-            st.write(f"Mean Squared Error: {mse:.2f}")
-
             # Future Prediction
-            future_months = pd.date_range(monthly_sales['Month'].max(), periods=4, freq='M')[1:]
-            future_indices = np.arange(len(monthly_sales), len(monthly_sales) + len(future_months)).reshape(-1, 1)
+            future_indices = np.arange(len(filtered_data), len(filtered_data) + 30).reshape(-1, 1)
+            future_dates = pd.date_range(filtered_data.iloc[-1, 0], periods=31, freq="D")[1:] if time_filter == "Day" else None
             future_sales = model.predict(future_indices)
 
-            # Display future predictions
-            predictions = pd.DataFrame({
-                "Month": future_months,
-                "Predicted Sales": future_sales
+            # Combine actual and predicted data
+            filtered_data['Type'] = 'Actual'
+            future_data = pd.DataFrame({
+                time_filter: future_dates,
+                sales_column: future_sales,
+                'Type': 'Prediction'
             })
-            st.write(predictions)
+            combined_data = pd.concat([filtered_data, future_data])
 
             # Visualization
-            fig_future = px.line(monthly_sales, x='Month', y=sales_column, title="Sales Prediction")
-            fig_future.add_scatter(x=future_months, y=future_sales, mode='lines+markers', name="Predictions")
-            st.plotly_chart(fig_future, use_container_width=True)
+            fig = px.line(
+                combined_data,
+                x=time_filter,
+                y=sales_column,
+                color='Type',
+                line_dash='Type',
+                title=f"{time_filter}-Level Sales and Forecast",
+                markers=True
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Display Results
+            st.write(f"Mean Squared Error: {mse:.2f}")
+            st.write(future_data)
+
         except Exception as e:
             st.error(f"Regression analysis failed: {e}")
 else:
     st.warning("Please upload a dataset to proceed.")
-
