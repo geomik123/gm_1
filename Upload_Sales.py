@@ -1,19 +1,24 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 from plotly.figure_factory import create_annotated_heatmap
 from ydata_profiling import ProfileReport
 import csv
+from datetime import timedelta
 
 # Set page configuration for wide layout
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Sales Dashboard", page_icon="📊")
 
 # Helper function to detect the delimiter in a CSV file
 def detect_delimiter(file):
     sample = file.read(1024).decode("utf-8")
     file.seek(0)  # Reset the file pointer
     sniffer = csv.Sniffer()
-    return sniffer.sniff(sample).delimiter
+    return sniffer.sniff(sample).().delimiter
 
 # Helper function to load data
 @st.cache_data
@@ -39,112 +44,87 @@ def load_data(file=None):
         st.error(f"Error loading file: {e}")
         return None
 
-# File uploader
+# Sidebar
 st.sidebar.header("Upload Your Data")
 uploaded_file = st.sidebar.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
-
 data = load_data(uploaded_file) if uploaded_file else load_data()
 
 if data is not None:
-    st.write("### Dataset Preview")
-    st.dataframe(data.head())
+    st.title("📊 Sales Data Analysis and Prediction Dashboard")
 
-    # Handle default file or uploaded file separately
-    if not uploaded_file:
-        # Default file logic: Assume specific column names
-        date_column = "invoice_date"
-        sales_column = "price"
-    else:
-        # Uploaded file: Attempt to detect date and sales columns
-        date_column = None
-        sales_column = None
-
-        for col in data.columns:
-            if "date" in col.lower() or "time" in col.lower():
-                date_column = col
-            if "sale" in col.lower() or "amount" in col.lower() or "price" in col.lower() or "total" in col.lower():
-                sales_column = col
+    # Identify date and sales columns
+    date_column, sales_column = None, None
+    for col in data.columns:
+        if "date" in col.lower() or "time" in col.lower():
+            date_column = col
+        if "sale" in col.lower() or "amount" in col.lower() or "price" in col.lower() or "total" in col.lower():
+            sales_column = col
 
     if not date_column or not sales_column:
         st.error("Could not automatically detect the required columns (Date and Sales). Please check your dataset.")
     else:
-        try:
-            # Convert the date column to datetime
-            data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
-            if data[date_column].isna().all():
-                st.error(f"The column '{date_column}' does not contain valid date information.")
-                st.stop()
+        # Convert to appropriate formats
+        data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
+        data[sales_column] = pd.to_numeric(data[sales_column], errors='coerce').fillna(0)
+        
+        if data[date_column].isna().all():
+            st.error(f"The column '{date_column}' does not contain valid date information.")
+            st.stop()
 
-            # Convert the sales column to numeric
-            data[sales_column] = pd.to_numeric(data[sales_column], errors='coerce').fillna(0)
+        # Display metrics
+        total_sales = data[sales_column].sum()
+        total_records = len(data)
 
-            # Dashboard metrics
-            total_sales = data[sales_column].sum()
-            total_records = len(data)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Sales", f"${total_sales:,.2f}")
+        col2.metric("Total Records", total_records)
+        col3.metric("Average Sales", f"${(total_sales / total_records):,.2f}")
 
-            col1, col2 = st.columns(2)
-            col1.metric("Total Sales", f"${total_sales:,.2f}")
-            col2.metric("Total Records", total_records)
+        # Create charts
+        st.header("Visualizations")
 
-            # Monthly Sales Trend
-            st.header("Monthly Sales Trend")
-            time_series = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
-            time_series[date_column] = time_series[date_column].dt.to_timestamp()
-            fig_trend = px.line(time_series, x=date_column, y=sales_column, title="Monthly Sales Trend")
+        # Row 1: Monthly Trend
+        with st.container():
+            st.subheader("Monthly Sales Trend")
+            monthly_sales = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
+            monthly_sales[date_column] = monthly_sales[date_column].dt.to_timestamp()
+            fig_trend = px.line(monthly_sales, x=date_column, y=sales_column, title="Monthly Sales Trend")
             st.plotly_chart(fig_trend, use_container_width=True)
 
-            # Profile Report Section
-            st.header("Data Profiling Report")
-            st.markdown(
-                "Below is the profiling report generated by **ydata-profiling**, available for download."
-            )
+        # Row 2: Correlation, Boxplot, and Pie Chart
+        st.subheader("Custom Visualizations")
+        numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
+        categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
 
-            # Generate and save the profile report
-            profile = ProfileReport(data, title="Pandas Profiling Report", explorative=True)
-            profile_path = "profiling_report.html"
-            profile.to_file(profile_path)
+        col1, col2, col3 = st.columns(3)
 
-            # Provide the report for download
-            with open(profile_path, "rb") as file:
-                btn = st.download_button(
-                    label="Download Profiling Report",
-                    data=file,
-                    file_name="profiling_report.html",
-                    mime="text/html"
-                )
-
-            st.success("Data profiling report generated!")
-
-            # Custom Visualizations Section
-            st.header("Custom Visualizations")
-
-            # Separate numerical and categorical columns
-            numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
-            categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
-
-            # Correlation Heatmap
-            if len(numerical_columns) > 1:
-                st.subheader("Correlation Heatmap")
+        # Correlation Heatmap
+        if len(numerical_columns) > 1:
+            with col1:
+                st.write("Correlation Heatmap")
                 correlation_matrix = data[numerical_columns].corr()
-                fig_corr = create_annotated_heatmap(
-                    z=correlation_matrix.values,
-                    x=correlation_matrix.columns.tolist(),
-                    y=correlation_matrix.columns.tolist(),
-                    colorscale="Viridis"
+                fig_corr = px.imshow(
+                    correlation_matrix,
+                    labels=dict(x="Features", y="Features", color="Correlation"),
+                    x=correlation_matrix.columns,
+                    y=correlation_matrix.columns,
+                    color_continuous_scale="Viridis",
                 )
                 st.plotly_chart(fig_corr, use_container_width=True)
 
-            # Boxplot for Outliers
-            st.subheader("Boxplot for Outliers")
-            if numerical_columns:
-                selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns)
+        # Boxplot for Outliers
+        if numerical_columns:
+            with col2:
+                st.write("Boxplot for Outliers")
+                selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns, key="boxplot")
                 fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
                 st.plotly_chart(fig_boxplot, use_container_width=True)
 
-            # Pie Chart for Category Distribution
-            if categorical_columns:
-                st.subheader("Category Distribution")
-                selected_category_col = st.selectbox("Select a categorical column for pie chart:", categorical_columns)
+        # Pie Chart for Category Distribution
+        if categorical_columns:
+            with col3:
+                st.write("Category Distribution")
+                selected_category_col = st.selectbox("Select a categorical column for pie chart:", categorical_columns, key="piechart")
                 category_counts = data[selected_category_col].value_counts().reset_index()
                 category_counts.columns = ['Category', 'Count']
                 fig_pie = px.pie(
@@ -156,25 +136,48 @@ if data is not None:
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
 
-            # Scatter Plot for Relationships
-            st.subheader("Scatter Plot for Relationships")
-            if len(numerical_columns) > 1:
-                x_axis = st.selectbox("Select X-axis:", numerical_columns)
-                y_axis = st.selectbox("Select Y-axis:", numerical_columns)
-                category_column = st.selectbox("Select a categorical column for coloring:", categorical_columns) if categorical_columns else None
-                fig_scatter = px.scatter(
-                    data,
-                    x=x_axis,
-                    y=y_axis,
-                    color=category_column,
-                    title=f"Scatter Plot of {x_axis} vs {y_axis}"
-                )
-                st.plotly_chart(fig_scatter, use_container_width=True)
-            else:
-                st.warning("Not enough numerical columns for scatter plot.")
+        # Regression Analysis and Prediction
+        st.header("Regression Analysis and Sales Prediction")
 
+        # Prepare data for regression
+        try:
+            data['Month'] = data[date_column].dt.to_period("M").dt.to_timestamp()
+            monthly_sales = data.groupby('Month')[sales_column].sum().reset_index()
+
+            # Linear Regression Model
+            X = np.arange(len(monthly_sales)).reshape(-1, 1)  # Time index
+            y = monthly_sales[sales_column].values
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+            model = LinearRegression()
+            model.fit(X_train, y_train)
+
+            # Predictions
+            y_pred = model.predict(X_test)
+            mse = mean_squared_error(y_test, y_pred)
+
+            # Display results
+            st.subheader("Regression Results")
+            st.write(f"Mean Squared Error: {mse:.2f}")
+
+            # Future Prediction
+            future_months = pd.date_range(monthly_sales['Month'].max(), periods=4, freq='M')[1:]
+            future_indices = np.arange(len(monthly_sales), len(monthly_sales) + len(future_months)).reshape(-1, 1)
+            future_sales = model.predict(future_indices)
+
+            # Display future predictions
+            predictions = pd.DataFrame({
+                "Month": future_months,
+                "Predicted Sales": future_sales
+            })
+            st.write(predictions)
+
+            # Visualization
+            fig_future = px.line(monthly_sales, x='Month', y=sales_column, title="Sales Prediction")
+            fig_future.add_scatter(x=future_months, y=future_sales, mode='lines+markers', name="Predictions")
+            st.plotly_chart(fig_future, use_container_width=True)
         except Exception as e:
-            st.error(f"Error processing columns: {e}")
+            st.error(f"Regression analysis failed: {e}")
 else:
     st.warning("Please upload a dataset to proceed.")
 
