@@ -37,7 +37,7 @@ def load_data(file=None):
                 return None
         else:
             # Default dataset
-            file_path = "customer_shopping_data.csv"
+            file_path = "00customer_shopping_data.csv"
             data = pd.read_csv(file_path)
         return data
     except Exception as e:
