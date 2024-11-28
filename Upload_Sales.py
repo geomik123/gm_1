@@ -2,67 +2,166 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from plotly.figure_factory import create_annotated_heatmap
+from ydata_profiling import ProfileReport
+import csv
 
-st.title("Custom Visualizations")
+# Set page configuration for wide layout
+st.set_page_config(layout="wide")
 
-# Upload dataset
-uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
-if uploaded_file:
-    data = pd.read_csv(uploaded_file)
-    st.write("Data Preview:", data.head())
+# Helper function to detect the delimiter in a CSV file
+def detect_delimiter(file):
+    sample = file.read(1024).decode("utf-8")
+    file.seek(0)  # Reset the file pointer
+    sniffer = csv.Sniffer()
+    return sniffer.sniff(sample).delimiter
 
-    # Separate numerical and categorical columns
-    numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
-    categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
-
-    if numerical_columns or categorical_columns:
-        st.header("Custom Visualizations")
-
-        # Correlation Heatmap
-        if len(numerical_columns) > 1:
-            st.subheader("Correlation Heatmap")
-            correlation_matrix = data[numerical_columns].corr()
-            fig_corr = create_annotated_heatmap(
-                z=correlation_matrix.values,
-                x=correlation_matrix.columns.tolist(),
-                y=correlation_matrix.columns.tolist(),
-                colorscale="Viridis"
-            )
-            st.plotly_chart(fig_corr, use_container_width=True)
-
-        # Boxplot for Outliers
-        st.subheader("Boxplot for Outliers")
-        if numerical_columns:
-            selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns)
-            fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
-            st.plotly_chart(fig_boxplot, use_container_width=True)
+# Helper function to load data
+@st.cache_data
+def load_data(file=None):
+    try:
+        if file is not None:
+            if file.name.endswith('.csv'):
+                delimiter = detect_delimiter(file)
+                data = pd.read_csv(file, delimiter=delimiter)
+            elif file.name.endswith('.xlsx'):
+                xl = pd.ExcelFile(file)
+                sheet_name = xl.sheet_names[0]  # Default to the first sheet
+                data = xl.parse(sheet_name)
+            else:
+                st.error("Unsupported file format! Please upload a CSV or Excel file.")
+                return None
         else:
-            st.warning("No numerical columns available for boxplot.")
+            # Default dataset
+            file_path = "customer_shopping_data.csv"
+            data = pd.read_csv(file_path)
+        return data
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return None
 
-        # Pie Chart for Category Distribution
-        st.subheader("Category Distribution")
-        if categorical_columns:
-            selected_category_col = st.selectbox("Select a categorical column for pie chart:", categorical_columns)
-            category_counts = data[selected_category_col].value_counts().reset_index()
-            category_counts.columns = ['Category', 'Count']
-            fig_pie = px.pie(
-                category_counts,
-                names='Category',
-                values='Count',
-                title=f"Distribution of {selected_category_col}",
-                hole=0.4
+# File uploader
+st.sidebar.header("Upload Your Data")
+uploaded_file = st.sidebar.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
+
+data = load_data(uploaded_file) if uploaded_file else load_data()
+
+if data is not None:
+    st.write("### Dataset Preview")
+    st.dataframe(data.head())
+
+    # Handle default file or uploaded file separately
+    if not uploaded_file:
+        # Default file logic: Assume specific column names
+        date_column = "invoice_date"
+        sales_column = "price"
+    else:
+        # Uploaded file: Attempt to detect date and sales columns
+        date_column = None
+        sales_column = None
+
+        for col in data.columns:
+            if "date" in col.lower() or "time" in col.lower():
+                date_column = col
+            if "sale" in col.lower() or "amount" in col.lower() or "price" in col.lower() or "total" in col.lower():
+                sales_column = col
+
+    if not date_column or not sales_column:
+        st.error("Could not automatically detect the required columns (Date and Sales). Please check your dataset.")
+    else:
+        try:
+            # Convert the date column to datetime
+            data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
+            if data[date_column].isna().all():
+                st.error(f"The column '{date_column}' does not contain valid date information.")
+                st.stop()
+
+            # Convert the sales column to numeric
+            data[sales_column] = pd.to_numeric(data[sales_column], errors='coerce').fillna(0)
+
+            # Dashboard metrics
+            total_sales = data[sales_column].sum()
+            total_records = len(data)
+
+            col1, col2 = st.columns(2)
+            col1.metric("Total Sales", f"${total_sales:,.2f}")
+            col2.metric("Total Records", total_records)
+
+            # Monthly Sales Trend
+            st.header("Monthly Sales Trend")
+            time_series = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
+            time_series[date_column] = time_series[date_column].dt.to_timestamp()
+            fig_trend = px.line(time_series, x=date_column, y=sales_column, title="Monthly Sales Trend")
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+            # Profile Report Section
+            st.header("Data Profiling Report")
+            st.markdown(
+                "Below is the profiling report generated by **ydata-profiling**, available for download."
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
-        else:
-            st.warning("No categorical columns available for pie chart.")
 
-        # Scatter Plot for Relationships
-        st.subheader("Scatter Plot for Relationships")
-        if len(numerical_columns) > 1:
-            x_axis = st.selectbox("Select X-axis:", numerical_columns)
-            y_axis = st.selectbox("Select Y-axis:", numerical_columns)
-            category_column = st.selectbox("Select a categorical column for coloring:", categorical_columns) if categorical_columns else None
-            if category_column:
+            # Generate and save the profile report
+            profile = ProfileReport(data, title="Pandas Profiling Report", explorative=True)
+            profile_path = "profiling_report.html"
+            profile.to_file(profile_path)
+
+            # Provide the report for download
+            with open(profile_path, "rb") as file:
+                btn = st.download_button(
+                    label="Download Profiling Report",
+                    data=file,
+                    file_name="profiling_report.html",
+                    mime="text/html"
+                )
+
+            st.success("Data profiling report generated!")
+
+            # Custom Visualizations Section
+            st.header("Custom Visualizations")
+
+            # Separate numerical and categorical columns
+            numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
+
+            # Correlation Heatmap
+            if len(numerical_columns) > 1:
+                st.subheader("Correlation Heatmap")
+                correlation_matrix = data[numerical_columns].corr()
+                fig_corr = create_annotated_heatmap(
+                    z=correlation_matrix.values,
+                    x=correlation_matrix.columns.tolist(),
+                    y=correlation_matrix.columns.tolist(),
+                    colorscale="Viridis"
+                )
+                st.plotly_chart(fig_corr, use_container_width=True)
+
+            # Boxplot for Outliers
+            st.subheader("Boxplot for Outliers")
+            if numerical_columns:
+                selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns)
+                fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
+                st.plotly_chart(fig_boxplot, use_container_width=True)
+
+            # Pie Chart for Category Distribution
+            if categorical_columns:
+                st.subheader("Category Distribution")
+                selected_category_col = st.selectbox("Select a categorical column for pie chart:", categorical_columns)
+                category_counts = data[selected_category_col].value_counts().reset_index()
+                category_counts.columns = ['Category', 'Count']
+                fig_pie = px.pie(
+                    category_counts,
+                    names='Category',
+                    values='Count',
+                    title=f"Distribution of {selected_category_col}",
+                    hole=0.4
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            # Scatter Plot for Relationships
+            st.subheader("Scatter Plot for Relationships")
+            if len(numerical_columns) > 1:
+                x_axis = st.selectbox("Select X-axis:", numerical_columns)
+                y_axis = st.selectbox("Select Y-axis:", numerical_columns)
+                category_column = st.selectbox("Select a categorical column for coloring:", categorical_columns) if categorical_columns else None
                 fig_scatter = px.scatter(
                     data,
                     x=x_axis,
@@ -70,17 +169,12 @@ if uploaded_file:
                     color=category_column,
                     title=f"Scatter Plot of {x_axis} vs {y_axis}"
                 )
+                st.plotly_chart(fig_scatter, use_container_width=True)
             else:
-                fig_scatter = px.scatter(
-                    data,
-                    x=x_axis,
-                    y=y_axis,
-                    title=f"Scatter Plot of {x_axis} vs {y_axis}"
-                )
-            st.plotly_chart(fig_scatter, use_container_width=True)
-        else:
-            st.warning("Not enough numerical columns for scatter plot.")
-    else:
-        st.error("The dataset does not contain numerical or categorical columns.")
+                st.warning("Not enough numerical columns for scatter plot.")
 
+        except Exception as e:
+            st.error(f"Error processing columns: {e}")
+else:
+    st.warning("Please upload a dataset to proceed.")
 
