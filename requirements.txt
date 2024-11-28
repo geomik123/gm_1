@@ -4,3 +4,4 @@ plotly
 ydata-profiling
 openpyxl
 setuptools
+sklearn
