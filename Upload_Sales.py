@@ -18,7 +18,7 @@ def detect_delimiter(file):
     sample = file.read(1024).decode("utf-8")
     file.seek(0)  # Reset the file pointer
     sniffer = csv.Sniffer()
-    return sniffer.sniff(sample).().delimiter
+    return sniffer.sniff(sample).delimiter
 
 # Helper function to load data
 @st.cache_data
