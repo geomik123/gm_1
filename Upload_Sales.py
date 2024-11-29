@@ -15,7 +15,7 @@ st.set_page_config(layout="wide", page_title="Sales Dashboard", page_icon="📊"
 def detect_delimiter(file):
     try:
         # Read a sample of the file
-        sample = file.read(2048).decode("utf-8")
+        sample = file.read(4096).decode("utf-8")
         file.seek(0)  # Reset the file pointer
         # Use csv.Sniffer to detect the delimiter
         sniffer = csv.Sniffer()
