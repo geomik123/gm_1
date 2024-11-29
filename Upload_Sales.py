@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import csv
 from datetime import timedelta
-imporrt chardet
+import chardet
 
 
 # Set page configuration for wide layout
