@@ -13,10 +13,17 @@ st.set_page_config(layout="wide", page_title="Sales Dashboard", page_icon="📊"
 
 # Helper function to detect the delimiter in a CSV file
 def detect_delimiter(file):
-    sample = file.read(1024).decode("utf-8")
-    file.seek(0)  # Reset the file pointer
-    sniffer = csv.Sniffer()
-    return sniffer.sniff(sample).delimiter
+    try:
+        # Read a sample of the file
+        sample = file.read(2048).decode("utf-8")
+        file.seek(0)  # Reset the file pointer
+        # Use csv.Sniffer to detect the delimiter
+        sniffer = csv.Sniffer()
+        return sniffer.sniff(sample).delimiter
+    except Exception as e:
+        # Fallback in case of failure
+        print(f"Error detecting delimiter: {e}")
+        return ','  # Default to comma
 
 # Helper function to load data
 @st.cache_data
