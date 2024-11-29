@@ -5,3 +5,4 @@ ydata-profiling
 openpyxl
 setuptools
 scikit-learn
+chardet
