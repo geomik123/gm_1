@@ -7,14 +7,23 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import csv
 from datetime import timedelta
+imporrt chardet
+
 
 # Set page configuration for wide layout
 st.set_page_config(layout="wide", page_title="Sales Dashboard", page_icon="📊")
 
+# Detect the encoding of the file
+def detect_encoding(file):
+    raw_data = file.read(10000)
+    result = chardet.detect(raw_data)
+    file.seek(0)
+    return result['encoding']
 # Helper function to detect the delimiter in a CSV file
 def detect_delimiter(file):
     try:
-        sample = file.read(4096).decode("utf-8")  # Ensure UTF-8 decoding
+        encoding = detect_encoding(file)
+        sample = file.read(4096).decode(encoding)  # Ensure UTF-8 decoding
         file.seek(0)  # Reset the file pointer
         sniffer = csv.Sniffer()
         return sniffer.sniff(sample).delimiter
