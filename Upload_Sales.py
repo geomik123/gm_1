@@ -95,16 +95,17 @@ if data is not None and data_category != "Select Category":
             numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
             categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
 
+            row1, row2 = st.rows(2)
             col1, col2 = st.columns(2)
 
-            with col1:
+            with row1, col1:
                 st.subheader("Boxplot for Outliers")
                 if numerical_columns:
                     selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns, key="boxplot")
                     fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
                     st.plotly_chart(fig_boxplot, use_container_width=True)
 
-            with col2:
+            with row1, col2:
                 st.subheader("Category Distribution")
                 if categorical_columns:
                     selected_category_col = st.selectbox("Select a categorical column for donut chart:", categorical_columns, key="donutchart")
@@ -112,6 +113,23 @@ if data is not None and data_category != "Select Category":
                     category_counts.columns = ['Category', 'Count']
                     fig_pie = px.pie(category_counts, names='Category', values='Count', title=f"Distribution of {selected_category_col}", hole=0.4)
                     st.plotly_chart(fig_pie, use_container_width=True)
+
+            with row2, col1:
+                # XGBoost Model for Prediction
+                data['TimeIndex'] = np.arange(len(data))
+                X = data[['TimeIndex']]
+                y = data[sales_column]
+                
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+                model = XGBRegressor(objective='reg:squarederror')
+                model.fit(X_train, y_train)
+    
+                future_indices = np.arange(len(data), len(data) + 30).reshape(-1, 1)
+                future_sales = model.predict(future_indices)
+                
+                predictions = model.predict(X)
+                data['Predicted'] = predictions
+                data['Error'] = data[sales_column] - data['Predicted']
 
     elif data_category == "Finance":
         total_inflows = data[data['Amount'] > 0]['Amount'].sum()
