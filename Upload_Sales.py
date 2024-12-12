@@ -114,9 +114,9 @@ if data is not None and data_category != "Select Category":
                     fig_pie = px.pie(category_counts, names='Category', values='Count', title=f"Distribution of {selected_category_col}", hole=0.4)
                     st.plotly_chart(fig_pie, use_container_width=True)
                     
-            col1 = st.columns(1)
+            row2_col1 = st.columns(1)
             
-            with col1:
+            with row2_col1:
                 # XGBoost Model for Prediction
                 data['TimeIndex'] = np.arange(len(data))
                 X = data[['TimeIndex']]
@@ -132,7 +132,12 @@ if data is not None and data_category != "Select Category":
                 predictions = model.predict(X)
                 data['Predicted'] = predictions
                 data['Error'] = data[sales_column] - data['Predicted']
+                
+                st.subheader("Actual vs Predicted Sales")
+                fig = px.line(data, x=date_column, y=[sales_column, 'Predicted'], title="Actual vs Predicted Sales")
+                st.plotly_chart(fig, use_container_width=True)
 
+    
     elif data_category == "Finance":
         total_inflows = data[data['Amount'] > 0]['Amount'].sum()
         total_outflows = abs(data[data['Amount'] < 0]['Amount'].sum())
