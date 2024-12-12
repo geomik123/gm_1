@@ -2,40 +2,35 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
-from sklearn.linear_model import LinearRegression
+import csv
+import chardet
+from datetime import timedelta
+from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import csv
-from datetime import timedelta
-import chardet
-
 
 # Set page configuration for wide layout
 st.set_page_config(layout="wide", page_title="Sales Dashboard", page_icon="📊")
 
-# Detect the encoding of the file
+# Detect encoding of the file
 def detect_encoding(file):
     raw_data = file.read(10000)
     result = chardet.detect(raw_data)
     file.seek(0)
     return result['encoding']
-# Helper function to detect the delimiter in a CSV file
+
+# Detect delimiter
 def detect_delimiter(file):
     try:
         encoding = detect_encoding(file)
-        sample = file.read(4096).decode(encoding)  # Ensure UTF-8 decoding
-        file.seek(0)  # Reset the file pointer
+        sample = file.read(4096).decode(encoding)
+        file.seek(0)
         sniffer = csv.Sniffer()
         return sniffer.sniff(sample).delimiter
-    except csv.Error as e:
-        st.warning(f"Could not detect delimiter automatically. Defaulting to comma.")
-        return ','  # Default fallback
-    except Exception as e:
-        st.error(f"Unexpected error: {e}")
+    except csv.Error:
         return ','
 
-
-# Helper function to load data
+# Load data
 @st.cache_data
 def load_data(file=None):
     try:
@@ -45,119 +40,98 @@ def load_data(file=None):
                 data = pd.read_csv(file, delimiter=delimiter)
             elif file.name.endswith('.xlsx'):
                 xl = pd.ExcelFile(file)
-                sheet_name = xl.sheet_names[0]  # Default to the first sheet
+                sheet_name = xl.sheet_names[0]
                 data = xl.parse(sheet_name)
             else:
-                st.error("Unsupported file format! Please upload a CSV or Excel file.")
+                st.error("Unsupported file format. Please upload a CSV or Excel file.")
                 return None
         else:
-            # Default dataset
-            file_path = "./retail_sales_dataset.csv"
-            data = pd.read_csv(file_path)
+            data = pd.read_csv("./retail_sales_dataset.csv")
         return data
     except Exception as e:
         st.error(f"Error loading file: {e}")
         return None
 
-# Sidebar
+# Sidebar for file upload and data category selection
 st.sidebar.header("Upload Your Data")
 uploaded_file = st.sidebar.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
-category  = st.sidebar.selectbox("Select Data Category", ["Choose Category", "Financial Data - Bank Statements", "Sales and Commercial Data", "Marketing Data", "Other type of Data"]) 
+data_category = st.sidebar.selectbox("Select Data Category", ["Select Category", "Sales", "Finance", "Marketing"])
 data = load_data(uploaded_file) if uploaded_file else load_data()
 
-if data is not None and category != "Select Category":
-    st.title(f"📊 {category} Analysis Dashboard")
-    
-    if category == "Financial Data - Bank Statements":
-        st.subheader("Financial Data Analysis")
-        
-        if 'Amount' in data.columns:
-            data['Amount'] = pd.to_numeric(data['Amount'], errors='coerce')
-        
-        inflow = data[data['Amount'] > 0]['Amount'].sum()
-        outflow = abs(data[data['Amount'] < 0]['Amount'].sum())
-        net_flow = inflow - outflow
+if data is not None and data_category != "Select Category":
+    st.title(f"📊 {data_category} Data Analysis and Prediction Dashboard")
 
-        st.metric("Total Inflows", f"${inflow:,.2f}")
-        st.metric("Total Outflows", f"${outflow:,.2f}")
-        st.metric("Net Cash Flow", f"${net_flow:,.2f}")
-        
-        if 'Date' in data.columns:
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-            monthly_flow = data.groupby(data['Date'].dt.to_period("M"))['Amount'].sum().reset_index()
-            fig = px.line(monthly_flow, x='Date', y='Amount', title="Monthly Cash Flow")
-            st.plotly_chart(fig, use_container_width=True)
+    if data_category == "Sales":
+        date_column, sales_column = None, None
+        for col in data.columns:
+            if "date" in col.lower() or "time" in col.lower():
+                date_column = col
+            if "sale" in col.lower() or "amount" in col.lower() or "price" in col.lower() or "total" in col.lower():
+                sales_column = col
 
-    elif category == "Sales and Commercial Data":
-        st.subheader("Sales Data Analysis")
-        
-        if 'Date' in data.columns and 'Sales' in data.columns:
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-            data['Sales'] = pd.to_numeric(data['Sales'], errors='coerce').fillna(0)
+        if not date_column or not sales_column:
+            st.error("Could not automatically detect the required columns (Date and Sales). Please check your dataset.")
+        else:
+            data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
+            data[sales_column] = pd.to_numeric(data[sales_column], errors='coerce').fillna(0)
             
-            total_sales = data['Sales'].sum()
+            if data[date_column].isna().all():
+                st.error(f"The column '{date_column}' does not contain valid date information.")
+                st.stop()
+
+            total_sales = data[sales_column].sum()
             total_records = len(data)
-            average_sales = total_sales / total_records
-            
-            st.metric("Total Sales", f"${total_sales:,.2f}")
-            st.metric("Total Records", total_records)
-            st.metric("Average Sales", f"${average_sales:,.2f}")
-            
-            monthly_sales = data.groupby(data['Date'].dt.to_period("M"))['Sales'].sum().reset_index()
-            fig = px.line(monthly_sales, x='Date', y='Sales', title="Monthly Sales Trend")
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # XGBoost Model for Sales Prediction
-            data['TimeIndex'] = np.arange(len(data))
-            X = data[['TimeIndex']]
-            y = data['Sales']
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-            model = XGBRegressor()
-            model.fit(X_train, y_train)
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Sales", f"${total_sales:,.2f}")
+            col2.metric("Total Records", total_records)
+            col3.metric("Average Sales", f"${(total_sales / total_records):,.2f}")
 
-            future_indices = np.arange(len(data), len(data) + 30).reshape(-1, 1)
-            future_sales = model.predict(future_indices)
-            future_dates = pd.date_range(start=data['Date'].max(), periods=30, freq='D')
+            monthly_sales = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
+            monthly_sales[date_column] = monthly_sales[date_column].dt.to_timestamp()
+            fig_trend = px.line(monthly_sales, x=date_column, y=sales_column, title="Monthly Sales Trend")
+            st.plotly_chart(fig_trend, use_container_width=True)
 
-            future_df = pd.DataFrame({'Date': future_dates, 'Predicted Sales': future_sales})
-            st.write("Future Sales Prediction")
-            st.write(future_df)
+            numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
 
-    elif category == "Marketing Data":
-        st.subheader("Marketing Data Analysis")
-        
-        impressions = data['Impressions'].sum() if 'Impressions' in data.columns else 0
-        clicks = data['Clicks'].sum() if 'Clicks' in data.columns else 0
-        conversions = data['Conversions'].sum() if 'Conversions' in data.columns else 0
-        spend = data['Spend'].sum() if 'Spend' in data.columns else 0
-        
-        if impressions > 0:
-            ctr = (clicks / impressions) * 100
-        else:
-            ctr = 0
+            col1, col2 = st.columns(2)
 
-        if clicks > 0:
-            conversion_rate = (conversions / clicks) * 100
-        else:
-            conversion_rate = 0
+            with col1:
+                st.subheader("Boxplot for Outliers")
+                if numerical_columns:
+                    selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns, key="boxplot")
+                    fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
+                    st.plotly_chart(fig_boxplot, use_container_width=True)
 
+            with col2:
+                st.subheader("Category Distribution")
+                if categorical_columns:
+                    selected_category_col = st.selectbox("Select a categorical column for donut chart:", categorical_columns, key="donutchart")
+                    category_counts = data[selected_category_col].value_counts().reset_index()
+                    category_counts.columns = ['Category', 'Count']
+                    fig_pie = px.pie(category_counts, names='Category', values='Count', title=f"Distribution of {selected_category_col}", hole=0.4)
+                    st.plotly_chart(fig_pie, use_container_width=True)
+
+    elif data_category == "Finance":
+        total_inflows = data[data['Amount'] > 0]['Amount'].sum()
+        total_outflows = abs(data[data['Amount'] < 0]['Amount'].sum())
+        net_cash_flow = total_inflows - total_outflows
+        st.metric("Total Inflows", f"${total_inflows:,.2f}")
+        st.metric("Total Outflows", f"${total_outflows:,.2f}")
+        st.metric("Net Cash Flow", f"${net_cash_flow:,.2f}")
+
+    elif data_category == "Marketing":
+        impressions = data['Impressions'].sum()
+        clicks = data['Clicks'].sum()
+        conversions = data['Conversions'].sum()
+        ctr = (clicks / impressions) * 100 if impressions > 0 else 0
+        conversion_rate = (conversions / clicks) * 100 if clicks > 0 else 0
         st.metric("Total Impressions", f"{impressions:,}")
         st.metric("Total Clicks", f"{clicks:,}")
-        st.metric("Click-Through Rate (CTR)", f"{ctr:.2f}%")
+        st.metric("CTR", f"{ctr:.2f}%")
         st.metric("Total Conversions", f"{conversions:,}")
         st.metric("Conversion Rate", f"{conversion_rate:.2f}%")
-        
-        if 'Date' in data.columns:
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-            daily_performance = data.groupby(data['Date'].dt.to_period("D"))[['Impressions', 'Clicks', 'Conversions']].sum().reset_index()
-            daily_performance['Date'] = daily_performance['Date'].dt.to_timestamp()
-            
-            fig = px.line(daily_performance, x='Date', y=['Impressions', 'Clicks', 'Conversions'], title="Daily Performance")
-            st.plotly_chart(fig, use_container_width=True)
-            
+
 else:
-    if category == "Select Category":
-        st.warning("Please select a data category to proceed.")
-    else:
-        st.warning("Please upload a dataset to proceed.")
+    st.warning("Please upload a dataset to proceed.")
