@@ -114,9 +114,9 @@ if data is not None and data_category != "Select Category":
                     fig_pie = px.pie(category_counts, names='Category', values='Count', title=f"Distribution of {selected_category_col}", hole=0.4)
                     st.plotly_chart(fig_pie, use_container_width=True)
                     
-            row2_col1 = st.columns(1)
+            col1 = st.columns(1)
             
-            with row2_col1:
+            with col1:
                 # XGBoost Model for Prediction
                 data['TimeIndex'] = np.arange(len(data))
                 X = data[['TimeIndex']]
