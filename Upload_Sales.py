@@ -96,7 +96,7 @@ if data is not None and data_category != "Select Category":
             categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
 
            
-            row1_col1, row1_col2, row2_col1, row2_col2 = st.columns(2)
+            row1_col1, row1_col2 = st.columns(2)
 
             with row1_col1:
                 st.subheader("Boxplot for Outliers")
@@ -113,7 +113,9 @@ if data is not None and data_category != "Select Category":
                     category_counts.columns = ['Category', 'Count']
                     fig_pie = px.pie(category_counts, names='Category', values='Count', title=f"Distribution of {selected_category_col}", hole=0.4)
                     st.plotly_chart(fig_pie, use_container_width=True)
-
+                    
+            row2_col1 = st.column(1)
+            
             with row2_col1:
                 # XGBoost Model for Prediction
                 data['TimeIndex'] = np.arange(len(data))
