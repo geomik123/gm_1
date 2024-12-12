@@ -62,7 +62,7 @@ def load_data(file=None):
 # Sidebar
 st.sidebar.header("Upload Your Data")
 uploaded_file = st.sidebar.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
-category  = st.sidebar.selectbox("Select Data Category", ["Select Category", "Financial Data - Bank Statements", "Sales and Commercial Data", "Marketing Data", "Other type of Data") 
+category  = st.sidebar.selectbox("Select Data Category", ["Select Category", "Financial Data - Bank Statements", "Sales and Commercial Data", "Marketing Data", "Other type of Data"]) 
 data = load_data(uploaded_file) if uploaded_file else load_data()
 
 if data is not None and category != "Select Category":
