@@ -95,17 +95,17 @@ if data is not None and data_category != "Select Category":
             numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
             categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
 
-            row1, row2 = st.rows(2)
-            col1, col2 = st.columns(2)
+           
+            row1_col1, row1_col2, row2_col1, row2_col2 = st.columns(2)
 
-            with row1, col1:
+            with row1_col1:
                 st.subheader("Boxplot for Outliers")
                 if numerical_columns:
                     selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns, key="boxplot")
                     fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
                     st.plotly_chart(fig_boxplot, use_container_width=True)
 
-            with row1, col2:
+            with row1_col2:
                 st.subheader("Category Distribution")
                 if categorical_columns:
                     selected_category_col = st.selectbox("Select a categorical column for donut chart:", categorical_columns, key="donutchart")
@@ -114,7 +114,7 @@ if data is not None and data_category != "Select Category":
                     fig_pie = px.pie(category_counts, names='Category', values='Count', title=f"Distribution of {selected_category_col}", hole=0.4)
                     st.plotly_chart(fig_pie, use_container_width=True)
 
-            with row2, col1:
+            with row2_col1:
                 # XGBoost Model for Prediction
                 data['TimeIndex'] = np.arange(len(data))
                 X = data[['TimeIndex']]
