@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
 # Set page configuration for wide layout
-st.set_page_config(layout="wide", page_title="Data Analysis Dashboard", page_icon="📊")
+st.set_page_config(layout="wide", page_title="Sales Dashboard", page_icon="📊")
 
 # Detect encoding of the file
 def detect_encoding(file):
@@ -87,63 +87,51 @@ if data is not None and data_category != "Select Category":
             col2.metric("Total Records", total_records)
             col3.metric("Average Sales", f"${(total_sales / total_records):,.2f}")
 
-            # XGBoost Model for Prediction
-            data['TimeIndex'] = np.arange(len(data))
-            X = data[['TimeIndex']]
-            y = data[sales_column]
-            
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            model = XGBRegressor(objective='reg:squarederror')
-            model.fit(X_train, y_train)
+            monthly_sales = data.groupby(data[date_column].dt.to_period("M"))[sales_column].sum().reset_index()
+            monthly_sales[date_column] = monthly_sales[date_column].dt.to_timestamp()
+            fig_trend = px.line(monthly_sales, x=date_column, y=sales_column, title="Monthly Sales Trend")
+            st.plotly_chart(fig_trend, use_container_width=True)
 
-            future_indices = np.arange(len(data), len(data) + 30).reshape(-1, 1)
-            future_sales = model.predict(future_indices)
-            
-            predictions = model.predict(X)
-            data['Predicted'] = predictions
-            data['Error'] = data[sales_column] - data['Predicted']
-            
-            st.subheader("Actual vs Predicted Sales")
-            fig = px.line(data, x=date_column, y=[sales_column, 'Predicted'], title="Actual vs Predicted Sales")
-            st.plotly_chart(fig, use_container_width=True)
-            
-            st.subheader("Prediction Error")
-            fig_error = px.line(data, x=date_column, y='Error', title="Prediction Errors")
-            st.plotly_chart(fig_error, use_container_width=True)
+            numerical_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
+            categorical_columns = data.select_dtypes(include=['object', 'category']).columns.tolist()
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.subheader("Boxplot for Outliers")
+                if numerical_columns:
+                    selected_boxplot_col = st.selectbox("Select a numerical column for boxplot:", numerical_columns, key="boxplot")
+                    fig_boxplot = px.box(data, y=selected_boxplot_col, title=f"Boxplot of {selected_boxplot_col}")
+                    st.plotly_chart(fig_boxplot, use_container_width=True)
+
+            with col2:
+                st.subheader("Category Distribution")
+                if categorical_columns:
+                    selected_category_col = st.selectbox("Select a categorical column for donut chart:", categorical_columns, key="donutchart")
+                    category_counts = data[selected_category_col].value_counts().reset_index()
+                    category_counts.columns = ['Category', 'Count']
+                    fig_pie = px.pie(category_counts, names='Category', values='Count', title=f"Distribution of {selected_category_col}", hole=0.4)
+                    st.plotly_chart(fig_pie, use_container_width=True)
 
     elif data_category == "Finance":
         total_inflows = data[data['Amount'] > 0]['Amount'].sum()
         total_outflows = abs(data[data['Amount'] < 0]['Amount'].sum())
         net_cash_flow = total_inflows - total_outflows
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Inflows", f"${total_inflows:,.2f}")
-        col2.metric("Total Outflows", f"${total_outflows:,.2f}")
-        col3.metric("Net Cash Flow", f"${net_cash_flow:,.2f}")
-        
-        st.subheader("Finance Line Chart")
-        fig_line = px.line(data, x=data.index, y='Amount', title="Financial Data Line Chart")
-        st.plotly_chart(fig_line, use_container_width=True)
-        
-        st.subheader("Finance Bar Chart")
-        fig_bar = px.bar(data, x=data.index, y='Amount', title="Financial Data Bar Chart")
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.metric("Total Inflows", f"${total_inflows:,.2f}")
+        st.metric("Total Outflows", f"${total_outflows:,.2f}")
+        st.metric("Net Cash Flow", f"${net_cash_flow:,.2f}")
 
     elif data_category == "Marketing":
         impressions = data['Impressions'].sum()
         clicks = data['Clicks'].sum()
         conversions = data['Conversions'].sum()
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Impressions", f"{impressions:,}")
-        col2.metric("Total Clicks", f"{clicks:,}")
-        col3.metric("Total Conversions", f"{conversions:,}")
-        
-        st.subheader("Marketing Line Chart")
-        fig_line = px.line(data, x=data.index, y='Impressions', title="Marketing Data Line Chart")
-        st.plotly_chart(fig_line, use_container_width=True)
-        
-        st.subheader("Marketing Bar Chart")
-        fig_bar = px.bar(data, x=data.index, y='Impressions', title="Marketing Data Bar Chart")
-        st.plotly_chart(fig_bar, use_container_width=True)
+        ctr = (clicks / impressions) * 100 if impressions > 0 else 0
+        conversion_rate = (conversions / clicks) * 100 if clicks > 0 else 0
+        st.metric("Total Impressions", f"{impressions:,}")
+        st.metric("Total Clicks", f"{clicks:,}")
+        st.metric("CTR", f"{ctr:.2f}%")
+        st.metric("Total Conversions", f"{conversions:,}")
+        st.metric("Conversion Rate", f"{conversion_rate:.2f}%")
 
 else:
     st.warning("Please upload a dataset to proceed.")
