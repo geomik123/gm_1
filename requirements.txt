@@ -6,3 +6,4 @@ openpyxl
 setuptools
 scikit-learn
 chardet
+xgboost
