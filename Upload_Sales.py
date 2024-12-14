@@ -118,7 +118,12 @@ if data is not None and data_category != "Select Category":
             
             with row2_col1:
                 # XGBoost Model for Prediction
+                data = data.sort_values(by=date_column).reset_index(drop=True)
                 # Create a time index and prepare features for XGBoost
+                data = data.groupby(data[date_column].dt.date).agg({sales_column: 'sum'}).reset_index()
+                data.rename(columns={date_column: 'Date'}, inplace=True)  # Rename for clarity
+                date_column = 'Date'
+                data = data.sort_values(by=date_column).reset_index(drop=True)
                 data['TimeIndex'] = np.arange(len(data))
                 X = data[['TimeIndex']]
                 y = data[sales_column]
