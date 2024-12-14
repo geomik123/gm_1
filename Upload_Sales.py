@@ -122,49 +122,45 @@ if data is not None and data_category != "Select Category":
                 data['TimeIndex'] = np.arange(len(data))
                 X = data[['TimeIndex']]
                 y = data[sales_column]
-                
+            
                 # Split the data for training and testing
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                
+            
                 # Train the XGBoost Regressor
                 model = XGBRegressor(objective='reg:squarederror', random_state=42)
                 model.fit(X_train, y_train)
-                
-                # Predict on existing data (to visualize how the model performs on the historical data)
+            
+                # Predict on existing data
                 historical_predictions = model.predict(X)
-                
-                # Prepare for future prediction (30 days ahead)
+            
+                # Prepare for future predictions (30 days ahead)
                 future_indices = np.arange(len(data), len(data) + 30).reshape(-1, 1)
                 future_sales = model.predict(future_indices)
-                
-                # Create future dates to match the future predictions
+            
+                # Create future dates to match predictions
                 last_date = data[date_column].max()
                 future_dates = pd.date_range(start=last_date + timedelta(days=1), periods=30)
-                
+            
                 # Create a DataFrame for future predictions
                 future_df = pd.DataFrame({
                     date_column: future_dates,
                     sales_column: np.nan,  # No actuals for future dates
                     'Predicted': future_sales
                 })
-                
-                # Combine original data with predictions
-                data['Predicted'] = historical_predictions  # Attach historical predictions to the original data
+            
+                # Combine historical and future data
+                data['Predicted'] = historical_predictions
                 combined_data = pd.concat([data[[date_column, sales_column, 'Predicted']], future_df], ignore_index=True)
-                
-                # Plot Actual vs Predicted
+            
+                # Plot Actual vs Predicted Sales
                 st.subheader("Actual vs Predicted Sales (Including 30-Day Forecast)")
-                
-                # Plot the combined data (including both the actuals and future predictions)
                 fig = px.line(
                     combined_data, 
                     x=date_column, 
                     y=[sales_column, 'Predicted'], 
-                    title="Actual vs Predicted Sales (with 30-day Forecast)"
+                    title="Actual vs Predicted Sales (with 30-Day Forecast)"
                 )
-                
                 st.plotly_chart(fig, use_container_width=True)
-
 
     
     elif data_category == "Finance":
