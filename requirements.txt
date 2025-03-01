@@ -1,9 +1,7 @@
 streamlit
 pandas
-plotly
-ydata-profiling
-openpyxl
-setuptools
+numpy
+matplotlib
+seaborn
+joblib
 scikit-learn
-chardet
-xgboost
