@@ -10,7 +10,7 @@ from sklearn.linear_model import LogisticRegression
 
 st.set_page_config(layout='wide')
 # Load dataset to get feature names
-df = pd.read_csv("classification/diabetes_dataset.csv")
+df = pd.read_csv("diabetes_dataset.csv")
 feature_columns = df.drop(columns=["Outcome"]).columns
 
 # Train models (If not already trained, otherwise load them from saved files)
