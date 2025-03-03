@@ -1,9 +1,0 @@
-streamlit
-pandas
-plotly
-ydata-profiling
-openpyxl
-setuptools
-scikit-learn
-chardet
-xgboost
