@@ -6,7 +6,7 @@ st.set_page_config(layout='wide')
 
 st.title("Pokemon Ultimate Dataset")
 
-file = "EDA_DATA-PROFILING/pokemon.csv"
+file = "./pokemon.csv"
 data = pd.read_csv(file)
 
 def plot_pokemon_damage_multiplier(pokemon_identifier):
