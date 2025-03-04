@@ -41,7 +41,7 @@ scaler, log_reg, grad_boost = load_models()
 
 # Streamlit UI
 st.title("Diabetes Prediction App")
-st.write("Enter your health parameters below, and the app will predict whether you have diabetes.")
+st.write("Enter your health parameters below, and the app will predict whether you have diabetes, based on a sample of given data.")
 
 show_hist = st.checkbox("Show Distribution of Every Variable", value=False) 
 if show_hist:
@@ -99,6 +99,8 @@ for col in feature_columns:
 input_scaled = scaler.transform(user_input_df)
 
 prediction_btn = st.button('Press here to make the Prediction')
+
+st.warning("⚠️ **Disclaimer:** This application is for demonstration purposes only and should not be used for medical advice or decisions.")  
 if prediction_btn:
 # Make predictions
     log_reg_pred = log_reg.predict(input_scaled)[0]
